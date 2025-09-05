@@ -1,4 +1,4 @@
-import os, json, argparse, time
+import os, json, argparse, time, warnings
 import yaml
 import torch
 import pandas as pd
@@ -11,8 +11,25 @@ def time_callable(fn, min_run_time=1.0):
     m = t.blocked_autorange(min_run_time=min_run_time)
     return float(m.median)
 
+def dispatch_has_mps(qualname: str) -> bool:
+    try:
+        tab = torch._C._dispatch_dump_table(qualname)
+        if "MPS" not in tab:
+            return False
+        # Heuristic: treat entries mentioning fallback / fallthrough / composite as not implemented
+        mps_lines = [ln for ln in tab.splitlines() if "MPS" in ln]
+        for ln in mps_lines:
+            low = ln.lower()
+            if any(k in low for k in ("fallback", "fallthrough", "composite")):
+                continue
+            return True
+        return False
+    except Exception:
+        return False
+
 def bench_qualname(qualname, shapes, dtypes):
     rows = []
+    impl_mps = dispatch_has_mps(qualname)
     for shape in shapes:
         for dt in dtypes:
             status = "ok"
@@ -28,9 +45,24 @@ def bench_qualname(qualname, shapes, dtypes):
 
             # MPS with fallback enabled
             mps_s = None
+            fallback_warn = None
             try:
                 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
                 fn_mps = make_callable(qualname, shape, dt, "mps")
+                # Probe once to detect fallback warning
+                warnings.simplefilter("always")
+                msgs = []
+                def hook(msg, *a, **k):
+                    s = str(msg)
+                    if "will fall back to run on the CPU" in s:
+                        msgs.append(s)
+                old = warnings.showwarning
+                warnings.showwarning = hook
+                try:
+                    fn_mps()
+                finally:
+                    warnings.showwarning = old
+                fallback_warn = bool(msgs)
                 torch.mps.synchronize()
                 mps_s = time_callable(fn_mps)
                 torch.mps.synchronize()
@@ -46,6 +78,8 @@ def bench_qualname(qualname, shapes, dtypes):
                 "time_mps_fallback_s": mps_s,
                 "penalty_factor": (mps_s / cpu_s if (cpu_s is not None and mps_s is not None) else None),
                 "over_ms": ((mps_s - cpu_s) * 1e3 if (cpu_s is not None and mps_s is not None) else None),
+                "implemented_mps": impl_mps,
+                "fallback_warn": fallback_warn,
                 "status": status,
                 "error": err,
             })
