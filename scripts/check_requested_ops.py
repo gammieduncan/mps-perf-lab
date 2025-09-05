@@ -7,6 +7,18 @@ from typing import Callable, Optional
 import torch
 import torch.nn.functional as F
 
+'''
+This script checks if a given operation is implemented on MPS.
+
+I'm pulling missing ops from https://github.com/pytorch/pytorch/issues/154052.
+
+To run:
+
+```
+python scripts/check_requested_ops.py --out results/check_requested_ops.csv
+```
+
+'''
 
 def dispatch_has_mps(qualname: str) -> bool:
     try:
@@ -16,7 +28,7 @@ def dispatch_has_mps(qualname: str) -> bool:
         mps_lines = [ln for ln in tab.splitlines() if "MPS" in ln]
         for ln in mps_lines:
             low = ln.lower()
-            if any(k in low for k in ("fallback", "fallthrough", "composite")):
+            if any(k in low for k in ("fallback", "fallthrough", "composite", "backendselect", "autograd")):
                 continue
             return True
         return False
@@ -90,9 +102,10 @@ def check_ops(qualnames: list[str], out_csv: str):
                 ran_with_fb = ok1
                 fb_warn = warn1
                 err = err1 or err0
+        impl_runtime_pref = ran_no_fb if ran_no_fb is not None else impl
         rows.append({
             "qualname": q,
-            "implemented_mps": impl,
+            "implemented_mps": impl_runtime_pref,
             "ran_no_fallback": ran_no_fb,
             "ran_with_fallback": ran_with_fb,
             "fallback_warn": fb_warn,
