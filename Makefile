@@ -14,7 +14,7 @@ report:
 
 coverage:
 	mkdir -p results
-	$(PY) scripts/scan_all_ops.py --out results/mps_coverage.csv
+	$(PY) scripts/scan_all_aten_ops.py --out results/mps_coverage.csv
 
 check-ops:
 	mkdir -p results

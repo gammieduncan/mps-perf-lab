@@ -1,7 +1,24 @@
-import argparse, csv, os, warnings
+import argparse
+import csv
+import os
+import warnings
+from typing import Callable, Optional
+
 import torch
 import torch.nn.functional as F
 
+'''
+This script checks if a given operation is implemented on MPS.
+
+I'm pulling missing ops from https://github.com/pytorch/pytorch/issues/154052.
+
+To run:
+
+```
+python scripts/check_ops.py --out results/check_ops.csv
+```
+
+'''
 
 def dispatch_has_mps(qualname: str) -> bool:
     try:
@@ -19,23 +36,7 @@ def dispatch_has_mps(qualname: str) -> bool:
         return False
 
 
-def iter_aten_qualnames():
-    pkt = torch.ops.aten
-    for name in dir(pkt):
-        if name.startswith("_"):
-            continue
-        try:
-            attr = getattr(pkt, name)
-        except Exception:
-            continue
-        overloads = getattr(attr, "overloads", None)
-        if not callable(overloads):
-            continue
-        for ol in overloads():
-            yield f"aten::{name}.{ol}"
-
-
-def make_family_probe(base: str, dtype: str = "float32"):
+def make_family_probe(base: str, dtype: str = "float32") -> Optional[Callable[[], None]]:
     device = "mps"
     dt = getattr(torch, dtype)
 
@@ -63,7 +64,7 @@ def make_family_probe(base: str, dtype: str = "float32"):
     return None
 
 
-def probe_run(fn, fallback: bool | None):
+def probe_run(fn: Callable[[], None], fallback: Optional[bool]) -> tuple[bool, Optional[bool], Optional[str]]:
     if fallback is not None:
         os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1" if fallback else "0"
     warnings.simplefilter("always")
@@ -78,37 +79,29 @@ def probe_run(fn, fallback: bool | None):
         fn()
         return True, bool(msgs), None
     except Exception as e:
-        return False, (bool(msgs) if msgs else None), str(e)
+        return False, bool(msgs) if msgs else None, str(e)
     finally:
         warnings.showwarning = old
 
 
-def scan(out_csv: str, only_missing: bool = False):
+def check_ops(qualnames: list[str], out_csv: str):
     rows = []
-    total = 0
-    missing = 0
-    for q in sorted(iter_aten_qualnames()):
-        total += 1
+    for q in qualnames:
+        base = q.split("::")[-1].split(".")[0]
         impl = dispatch_has_mps(q)
-        if not impl:
-            missing += 1
-        if only_missing and impl:
-            continue
+        fn = make_family_probe(base)
         ran_no_fb = None
         ran_with_fb = None
         fb_warn = None
         err = None
-        if torch.backends.mps.is_available():
-            base = q.split("::")[-1].split(".")[0]
-            fn = make_family_probe(base)
-            if fn is not None:
-                ok0, warn0, err0 = probe_run(fn, fallback=False)
-                ran_no_fb = ok0
-                if not ok0:
-                    ok1, warn1, err1 = probe_run(fn, fallback=True)
-                    ran_with_fb = ok1
-                    fb_warn = warn1
-                    err = err1 or err0
+        if fn is not None and torch.backends.mps.is_available():
+            ok0, warn0, err0 = probe_run(fn, fallback=False)
+            ran_no_fb = ok0
+            if not ok0:
+                ok1, warn1, err1 = probe_run(fn, fallback=True)
+                ran_with_fb = ok1
+                fb_warn = warn1
+                err = err1 or err0
         impl_runtime_pref = ran_no_fb if ran_no_fb is not None else impl
         rows.append({
             "qualname": q,
@@ -119,32 +112,22 @@ def scan(out_csv: str, only_missing: bool = False):
             "error": err,
         })
 
+    os.makedirs(os.path.dirname(out_csv) or ".", exist_ok=True)
     with open(out_csv, "w", newline="") as f:
-        w = csv.DictWriter(
-            f,
-            fieldnames=[
-                "qualname",
-                "implemented_mps",
-                "ran_no_fallback",
-                "ran_with_fallback",
-                "fallback_warn",
-                "error",
-            ],
-        )
+        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         w.writeheader()
         w.writerows(rows)
-
-    print({
-        "total_ops": total,
-        "implemented_mps": total - missing,
-        "missing_mps": missing,
-        "csv": out_csv,
-    })
+    print(f"wrote {out_csv} ({len(rows)} rows)")
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default="results/mps_coverage.csv")
-    ap.add_argument("--only_missing", action="store_true")
+    ap.add_argument("--out", default="results/check_ops.csv")
+    ap.add_argument("ops", nargs="*", default=[
+        "aten::linalg_qr.out",
+        "aten::_linalg_eigh.eigenvalues",
+        "aten::unique_dim",
+        "aten::grid_sampler_2d_backward",
+    ])
     args = ap.parse_args()
-    scan(args.out, args.only_missing)
+    check_ops(args.ops, args.out)
