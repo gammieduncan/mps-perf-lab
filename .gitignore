@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+results/
+comments_*.json
+ops/targets.yaml
+.DS_Store
+

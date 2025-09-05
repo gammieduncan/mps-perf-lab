@@ -1,0 +1,15 @@
+Metadata-Version: 2.4
+Name: mps-fallback-bench
+Version: 0.1.0
+Summary: Benchmark CPU fallback costs for PyTorch MPS ops
+Requires-Python: >=3.10
+Requires-Dist: torch>=2.2
+Requires-Dist: pandas>=2.0
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: jinja2>=3.1
+Requires-Dist: requests>=2.31
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: mypy; extra == "dev"
+Requires-Dist: matplotlib; extra == "dev"

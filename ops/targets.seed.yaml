@@ -1,0 +1,63 @@
+# A starting list; the sync script will generate a richer targets.yaml.
+
+version:
+  torch: "unknown"
+  commit: "unknown"
+  macos: "unknown"
+  mps: true
+
+ops:
+  - qualname: "aten::cumsum.default"
+    score: 5.0
+    voters: 4
+    thumbs: 2
+    last_year: 2025
+    implemented_mps: false
+    confirmed_fallback: true
+    shapes: [[64,1024], [8192]]
+    dtypes: ["float16","bfloat16","float32"]
+    issues: ["https://github.com/pytorch/pytorch/issues/77764"]
+
+  - qualname: "aten::index_select.default"
+    score: 4.0
+    voters: 3
+    thumbs: 1
+    last_year: 2025
+    implemented_mps: false
+    confirmed_fallback: true
+    shapes: [[32,1024]]
+    dtypes: ["float16","float32"]
+    issues: ["https://github.com/pytorch/pytorch/issues/77764#issuecomment-..."]
+
+  - qualname: "aten::_linalg_eigh.eigenvalues"
+    score: 4.5
+    voters: 3
+    thumbs: 2
+    last_year: 2025
+    implemented_mps: false
+    confirmed_fallback: true
+    shapes: [[256,256], [4,128,128]]
+    dtypes: ["float32"]
+    issues: ["https://github.com/pytorch/pytorch/issues/77764#linalg-eigh"]
+
+  - qualname: "aten::cummin.out"
+    score: 4.0
+    voters: 3
+    thumbs: 1
+    last_year: 2025
+    implemented_mps: false
+    confirmed_fallback: true
+    shapes: [[64,1024], [8192]]
+    dtypes: ["float16","float32"]
+    issues: ["https://github.com/pytorch/pytorch/issues/77764#cummin"]
+
+  - qualname: "aten::conv3d.default"
+    score: 3.5
+    voters: 2
+    thumbs: 1
+    last_year: 2025
+    implemented_mps: false
+    confirmed_fallback: true
+    shapes: [[1,16,16,32,32], [1,32,8,32,32]]
+    dtypes: ["float16","float32"]
+    issues: ["https://github.com/pytorch/pytorch/issues/77764#conv3d"]
